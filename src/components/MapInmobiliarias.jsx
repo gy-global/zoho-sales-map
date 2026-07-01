@@ -26,82 +26,110 @@ async function fetchFianzas(inmobiliariaZohoId) {
 function buildPopup(inmo, fianzas) {
   const polizas = fianzas.filter(f => f.stage === 'Póliza Vendida');
   const otros   = fianzas.filter(f => f.stage !== 'Póliza Vendida');
+  const perdidos = fianzas.filter(f => f.stage === 'Perdidos').length;
 
   const stageColor = (stage) => {
-    if (stage === 'Póliza Vendida') return '#10b981';
-    if (stage === 'Perdidos')       return '#ef4444';
-    if (stage === 'Baja')           return '#f59e0b';
-    return '#1c3fae';
+    if (stage === 'Póliza Vendida') return { bg: '#dcfce7', text: '#15803d' };
+    if (stage === 'Perdidos')       return { bg: '#fee2e2', text: '#dc2626' };
+    if (stage === 'Baja')           return { bg: '#fef3c7', text: '#d97706' };
+    return { bg: '#ede9fe', text: '#6d28d9' };
   };
 
-  const fianzaRows = (list) => list.map(f => `
-    <div style="background:#f9f9f9;border-radius:6px;padding:8px 10px;margin-bottom:6px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="font-size:11px;color:#15235f;font-weight:600;">${esc(f.deal_name)}</span>
-        <span style="font-size:10px;background:${stageColor(f.stage)}22;color:${stageColor(f.stage)};padding:1px 6px;border-radius:10px;font-weight:600;white-space:nowrap;">${esc(f.stage)}</span>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-        <span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:8px;">${esc(f.categoria_garantia ?? '—')}</span>
-        <span style="font-size:10px;background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:8px;">${esc(f.estado_contrato ?? '—')}</span>
-        ${f.sucursal ? `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;">${esc(f.sucursal)}</span>` : ''}
-      </div>
-      <div style="display:flex;justify-content:space-between;">
-        <span style="font-size:10px;color:#666;">Alquiler: <strong>${fmt(f.alquiler)}/mes</strong></span>
-        <span style="font-size:10px;color:#666;">Garantía: <strong>${fmt(f.amount)}</strong></span>
-      </div>
-      ${fmtD(f.closing_date) ? `<div style="font-size:10px;color:#bbb;margin-top:2px;">Cierre: ${fmtD(f.closing_date)}</div>` : ''}
-    </div>
-  `).join('');
-
   const address = [inmo.billing_street, inmo.billing_city, inmo.billing_state].filter(Boolean).join(', ');
+  const tienePolizas = (inmo.total_polizas ?? 0) > 0;
+
+  const headerBg = tienePolizas
+    ? 'linear-gradient(135deg, #312e81, #4338ca)'
+    : 'linear-gradient(135deg, #1e293b, #334155)';
+
+  const fianzaRows = (list) => list.map(f => {
+    const sc = stageColor(f.stage);
+    return `
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+        <span style="font-size:12px;color:#1e293b;font-weight:700;">${esc(f.deal_name)}</span>
+        <span style="font-size:10px;background:${sc.bg};color:${sc.text};padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap;">${esc(f.stage)}</span>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
+        ${f.categoria_garantia ? `<span style="font-size:10px;background:#ede9fe;color:#5b21b6;padding:2px 7px;border-radius:20px;font-weight:500;">${esc(f.categoria_garantia)}</span>` : ''}
+        ${f.estado_contrato ? `<span style="font-size:10px;background:#f0fdf4;color:#166534;padding:2px 7px;border-radius:20px;font-weight:500;">${esc(f.estado_contrato)}</span>` : ''}
+        ${f.sucursal ? `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:20px;font-weight:500;">${esc(f.sucursal)}</span>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div style="background:#f8fafc;border-radius:8px;padding:5px 8px;">
+          <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Alquiler/mes</div>
+          <div style="font-size:12px;color:#1e293b;font-weight:700;">${fmt(f.alquiler)}</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:5px 8px;">
+          <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Garantía</div>
+          <div style="font-size:12px;color:#1e293b;font-weight:700;">${fmt(f.amount)}</div>
+        </div>
+      </div>
+      ${fmtD(f.closing_date) ? `<div style="font-size:10px;color:#94a3b8;margin-top:6px;">📅 Cierre: ${fmtD(f.closing_date)}</div>` : ''}
+    </div>`}).join('');
 
   return `
-    <div style="font-family:'Poppins',system-ui,-apple-system,sans-serif;width:360px;padding:14px 16px;">
-      <div style="background:#15235f;padding:12px 14px;margin:-14px -16px 12px;border-radius:4px 4px 0 0;">
-        <div style="color:white;font-size:14px;font-weight:700;margin-bottom:2px;padding-right:24px;">${esc(inmo.account_name)}</div>
-        <div style="color:#94a3b8;font-size:11px;">${esc(address || '—')}</div>
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:340px;overflow:hidden;">
+
+      <!-- HEADER -->
+      <div style="background:${headerBg};padding:18px 16px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;">
+          <div style="flex:1;">
+            <div style="font-size:16px;font-weight:800;color:white;letter-spacing:-0.3px;line-height:1.2;padding-right:8px;">${esc(inmo.account_name)}</div>
+            ${inmo.comercial_garantiaya ? `<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:3px;font-weight:500;">${esc(inmo.comercial_garantiaya)}</div>` : ''}
+          </div>
+          <span style="flex-shrink:0;background:rgba(255,255,255,0.18);color:white;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid rgba(255,255,255,0.25);">${tienePolizas ? '🏢 Activa' : '⚫ Sin pólizas'}</span>
+        </div>
+        ${address ? `
+        <div style="display:flex;align-items:flex-start;gap:7px;background:rgba(0,0,0,0.2);border-radius:10px;padding:8px 11px;">
+          <span style="font-size:13px;flex-shrink:0;">📍</span>
+          <span style="font-size:11px;color:rgba(255,255,255,0.85);line-height:1.4;font-weight:500;">${esc(address)}</span>
+        </div>` : ''}
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">
-        <span style="font-size:10px;color:#999;text-transform:uppercase;font-weight:600;">Comercial</span>
-        <span style="font-size:12px;color:#15235f;font-weight:600;">${esc(inmo.comercial_garantiaya ?? '—')}</span>
-      </div>
-
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:10px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;color:#10b981;">${inmo.total_polizas ?? 0}</div>
-          <div style="font-size:10px;color:#666;margin-top:2px;">Pólizas</div>
-        </div>
-        <div style="flex:1;background:#fee2e2;border-radius:8px;padding:10px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;color:#ef4444;">${(inmo.total_deals ?? 0) - (inmo.total_polizas ?? 0)}</div>
-          <div style="font-size:10px;color:#666;margin-top:2px;">Perdidos</div>
-        </div>
-        <div style="flex:1;background:#fef3c7;border-radius:8px;padding:10px;text-align:center;">
-          <div style="font-size:13px;font-weight:700;color:#d97706;margin-top:4px;">${fmt(inmo.total_amount)}</div>
-          <div style="font-size:10px;color:#666;margin-top:2px;">Recaudado</div>
+      <!-- STATS -->
+      <div style="padding:14px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div style="background:white;border-radius:12px;padding:11px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+            <div style="font-size:22px;font-weight:800;color:#4f46e5;line-height:1;">${inmo.total_polizas ?? 0}</div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;margin-top:4px;">Pólizas</div>
+          </div>
+          <div style="background:white;border-radius:12px;padding:11px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+            <div style="font-size:22px;font-weight:800;color:#ef4444;line-height:1;">${perdidos}</div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;margin-top:4px;">Perdidos</div>
+          </div>
+          <div style="background:white;border-radius:12px;padding:11px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+            <div style="font-size:13px;font-weight:800;color:#059669;line-height:1;margin-top:4px;">${fmt(inmo.total_amount)}</div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;margin-top:4px;">Recaudado</div>
+          </div>
         </div>
       </div>
 
+      <!-- PÓLIZAS VENDIDAS -->
       ${polizas.length > 0 ? `
-      <div style="margin-top:10px;padding-top:10px;border-top:2px solid #d1fae5;">
-        <div style="font-size:11px;color:#10b981;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">
-          ✅ Pólizas vendidas — ${polizas.length}
+      <div style="padding:0 14px 4px;background:white;">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding-top:14px;border-top:1px solid #f1f5f9;">
+          <div style="width:3px;height:14px;background:#4f46e5;border-radius:2px;flex-shrink:0;"></div>
+          <span style="font-size:11px;color:#4338ca;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;">Pólizas vendidas · ${polizas.length}</span>
         </div>
         ${fianzaRows(polizas)}
       </div>` : ''}
 
+      <!-- OTROS DEALS -->
       ${otros.length > 0 ? `
-      <div style="margin-top:10px;padding-top:10px;border-top:2px solid #e0e7ff;">
-        <div style="font-size:11px;color:#1c3fae;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">
-          📋 Otros deals — ${otros.length}
+      <div style="padding:0 14px 4px;background:white;">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding-top:14px;border-top:1px solid #f1f5f9;">
+          <div style="width:3px;height:14px;background:#94a3b8;border-radius:2px;flex-shrink:0;"></div>
+          <span style="font-size:11px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;">Otros deals · ${otros.length}</span>
         </div>
         ${fianzaRows(otros)}
       </div>` : ''}
 
       ${fianzas.length === 0 ? `
-      <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
-        Sin deals asociados
-      </div>` : ''}
+      <div style="text-align:center;padding:24px 16px;background:white;">
+        <div style="font-size:28px;margin-bottom:8px;">🏢</div>
+        <div style="font-size:12px;color:#94a3b8;font-weight:500;">Sin deals asociados</div>
+      </div>` : '<div style="height:10px;background:white;"></div>'}
     </div>
   `;
 }
@@ -115,14 +143,9 @@ export default function MapInmobiliarias({ inmobiliarias, stats, filtersOpen }) 
 
   useEffect(() => {
     if (mapObj.current) return;
-    mapObj.current = L.map(mapRef.current, {
-      center: [40.4168, -3.7038],
-      zoom: 6,
-      zoomControl: false,
-    });
+    mapObj.current = L.map(mapRef.current, { center: [40.4168, -3.7038], zoom: 6, zoomControl: false });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CartoDB',
-      maxZoom: 19,
+      attribution: '© OpenStreetMap © CartoDB', maxZoom: 19,
     }).addTo(mapObj.current);
     zoomRef.current = L.control.zoom({ position: 'topright' });
     zoomRef.current.addTo(mapObj.current);
@@ -140,40 +163,33 @@ export default function MapInmobiliarias({ inmobiliarias, stats, filtersOpen }) 
     if (layerRef.current) mapObj.current.removeLayer(layerRef.current);
 
     const cluster = L.markerClusterGroup({
-      chunkedLoading: true,
-      maxClusterRadius: 50,
+      chunkedLoading: true, maxClusterRadius: 50,
       iconCreateFunction: (c) => {
-        const count = c.getChildCount();
-        const size  = count > 100 ? 44 : count > 50 ? 38 : count > 10 ? 32 : 28;
+        const n = c.getChildCount();
+        const s = n > 100 ? 44 : n > 50 ? 38 : n > 10 ? 32 : 28;
         return L.divIcon({
-          html: `<div style="width:${size}px;height:${size}px;background:#1c3fae;color:white;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${count > 999 ? '+999' : count}</div>`,
-          className: '',
-          iconSize: [size, size],
+          html: `<div style="width:${s}px;height:${s}px;background:#4f46e5;color:white;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${n > 999 ? '+999' : n}</div>`,
+          className: '', iconSize: [s, s],
         });
       },
     });
 
     inmobiliarias.forEach(inmo => {
       if (!inmo.lat || !inmo.lng) return;
-
       const tienePolizas = (inmo.total_polizas ?? 0) > 0;
-      const color        = tienePolizas ? '#1c3fae' : '#94a3b8';
-      const size         = tienePolizas ? 16 : 12;
+      const color = tienePolizas ? '#4f46e5' : '#94a3b8';
+      const size  = tienePolizas ? 16 : 12;
 
       const icon = L.divIcon({
         html: `<div style="width:${size}px;height:${size}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
-        className: '',
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
+        className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
 
       const marker = L.marker([parseFloat(inmo.lat), parseFloat(inmo.lng)], { icon });
-
       marker.on('click', async () => {
         const fianzas = await fetchFianzas(inmo.zoho_id);
-        marker.bindPopup(buildPopup(inmo, fianzas), { maxWidth: 400 }).openPopup();
+        marker.bindPopup(buildPopup(inmo, fianzas), { maxWidth: 360 }).openPopup();
       });
-
       cluster.addLayer(marker);
     });
 
@@ -182,40 +198,48 @@ export default function MapInmobiliarias({ inmobiliarias, stats, filtersOpen }) 
   }, [inmobiliarias]);
 
   return (
-    <div style={{ position:'relative', width:'100%', height:'100%' }}>
-      <div ref={mapRef} style={{ width:'100%', height:'100%' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+
       <div style={{
-        position:'absolute', bottom:'32px', right:'12px', zIndex:1000,
-        background:'white', borderRadius:'12px',
-        boxShadow:'0 2px 16px rgba(0,0,0,0.13)',
-        minWidth:'210px', overflow:'hidden',
+        position: 'absolute', bottom: '32px', right: '12px', zIndex: 1000,
+        background: 'white', borderRadius: '16px',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
+        minWidth: '220px', overflow: 'hidden',
+        border: '1px solid #e2e8f0',
       }}>
-        <button
-          onClick={() => setShowPanel(!showPanel)}
-          style={{ width:'100%', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,#15235f 0%,#0d1640 100%)', border:'none', cursor:'pointer' }}
-        >
-          <span style={{ fontSize:'12.5px', fontWeight:700, color:'#fff' }}>🏢 {(stats?.total ?? 0).toLocaleString('es-ES')} inmobiliarias</span>
-          <span style={{ fontSize:'11px', color:'rgba(255,255,255,0.65)' }}>{showPanel ? '▼' : '▲'}</span>
+        <button onClick={() => setShowPanel(!showPanel)} style={{
+          width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer',
+          borderBottom: showPanel ? '1px solid #f1f5f9' : 'none',
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+            🏢 {(stats?.total ?? 0).toLocaleString('es-ES')} inmobiliarias
+          </span>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>{showPanel ? '▼' : '▲'}</span>
         </button>
+
         {showPanel && (
-          <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:'10px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingBottom:'10px', borderBottom:'1px solid #f0f0f0' }}>
-              <span style={{ fontSize:'11px', color:'#999', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.4px' }}>Total recaudado</span>
-              <span style={{ fontSize:'14px', color:'#1c3fae', fontWeight:700 }}>€{(stats?.totalAmount ?? 0).toLocaleString('es-ES')}</span>
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', borderRadius: '12px', padding: '10px 12px', border: '1px solid #c7d2fe' }}>
+              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total recaudado</div>
+              <div style={{ fontSize: '17px', color: '#4338ca', fontWeight: 800 }}>€{(stats?.totalAmount ?? 0).toLocaleString('es-ES')}</div>
             </div>
-            <div style={{ fontWeight:600, fontSize:'11px', color:'#999', textTransform:'uppercase', letterSpacing:'0.5px' }}>Leyenda</div>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <span style={{ width:14, height:14, borderRadius:'50%', background:'#1c3fae', display:'inline-block', border:'2px solid white', boxShadow:'0 0 0 1px #1c3fae' }}/>
-              <span style={{ fontSize:'12px', color:'#333' }}>Con pólizas vendidas</span>
-            </div>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <span style={{ width:10, height:10, borderRadius:'50%', background:'#94a3b8', display:'inline-block', border:'2px solid white', boxShadow:'0 0 0 1px #94a3b8' }}/>
-              <span style={{ fontSize:'12px', color:'#333' }}>Sin pólizas vendidas</span>
-            </div>
-            <div style={{ fontWeight:600, fontSize:'11px', color:'#999', textTransform:'uppercase', letterSpacing:'0.5px', paddingTop:'10px', borderTop:'1px solid #f0f0f0' }}>Agrupación</div>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <span style={{ width:22, height:22, borderRadius:'50%', background:'#1c3fae', display:'inline-flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:'9px', fontWeight:700, border:'2px solid white', flexShrink:0 }}>N</span>
-              <span style={{ fontSize:'12px', color:'#333' }}>Haz zoom para expandir</span>
+
+            <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Leyenda</div>
+            {[
+              { color: '#4f46e5', size: 14, label: 'Con pólizas vendidas' },
+              { color: '#94a3b8', size: 10, label: 'Sin pólizas vendidas' },
+            ].map(({ color, size, label }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: size, height: size, borderRadius: '50%', background: color, display: 'inline-block', border: '2px solid white', boxShadow: `0 0 0 1px ${color}`, flexShrink: 0 }} />
+                <span style={{ fontSize: '12px', color: '#475569' }}>{label}</span>
+              </div>
+            ))}
+
+            <div style={{ paddingTop: '8px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#4f46e5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', fontWeight: 700, flexShrink: 0 }}>N</span>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>Zoom para expandir</span>
             </div>
           </div>
         )}

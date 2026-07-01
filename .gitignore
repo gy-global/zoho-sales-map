@@ -2,3 +2,9 @@ node_modules/
 .env
 dist/
 .DS_Store
+auditoria-notificaciones-2026-06-03.txt
+scan-notificaciones-2026-06-03.txt
+scripts/audit-notificaciones.js
+scripts/compare.js
+scripts/coql-stats-impagos.js
+scripts/scan-notificaciones-faltantes.js
