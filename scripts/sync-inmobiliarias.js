@@ -124,12 +124,25 @@ async function getDealsStats() {
   return stats;
 }
 
+function normalizarCP(code) {
+  if (!code) return null;
+  const limpio = String(code).trim().replace(/\D/g, ''); // solo dígitos
+  if (!limpio) return null;
+  return limpio.padStart(5, '0'); // ej. 8028 -> 08028
+}
+
 function buildAddress(d) {
   const street = d.Billing_Street?.trim();
   const city   = d.Billing_City?.trim();
   const state  = d.Billing_State?.trim();
-  if (street && street.length > 5) return street;
-  if (city || state) return [city, state].filter(Boolean).join(', ');
+  const code   = normalizarCP(d.Billing_Code);
+
+  if (street && street.length > 5)
+    return [street, code, city].filter(Boolean).join(', ');
+
+  if (city || state)
+    return [code, city, state].filter(Boolean).join(', ');
+
   return null;
 }
 
@@ -243,7 +256,7 @@ async function main() {
   const zohoIds = inmobiliarias.map(d => d.id);
   const { data: yaGeocoded } = await supabase
     .from('inmobiliarias')
-    .select('zoho_id, lat, billing_street')
+    .select('zoho_id, lat, billing_street, billing_city, billing_state, billing_code')
     .in('zoho_id', zohoIds)
     .not('lat', 'is', null);
 
@@ -257,14 +270,21 @@ async function main() {
     const row      = mapInmobiliaria(inmo, stats);
     const address  = buildAddress(inmo);
     const existing = geocodedMap[inmo.id];
-    const dirCambio = existing && address && existing.billing_street?.trim() !== inmo.Billing_Street?.trim();
+
+    const dirCambio = existing && address && (
+      existing.billing_street?.trim() !== inmo.Billing_Street?.trim() ||
+      existing.billing_city?.trim()   !== inmo.Billing_City?.trim() ||
+      existing.billing_state?.trim()  !== inmo.Billing_State?.trim() ||
+      normalizarCP(existing.billing_code) !== normalizarCP(inmo.Billing_Code)
+    );
+
     const necesitaGeocode = address && (!existing?.lat || dirCambio);
 
     if (necesitaGeocode) {
       const { lat, lng } = await geocode(address);
       row.lat = lat; row.lng = lng;
       row.geocodificado           = lat !== null;
-      row.calidad_geocodificacion = lat ? 'completa' : 'sin_coordenadas';
+      row.calidad_geocodificacion = lat !== null ? 'completa' : 'sin_coordenadas';
       if (lat) geocodedCount++;
     } else if (existing?.lat) {
       row.lat = existing.lat;
