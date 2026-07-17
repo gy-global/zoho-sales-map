@@ -149,15 +149,30 @@ function buildAddress(d) {
 async function geocode(address) {
   if (!address || !GOOGLE_MAPS_KEY) return { lat: null, lng: null };
   try {
-    const res  = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address + ', España')}&key=${GOOGLE_MAPS_KEY}`
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}` +
+      `&components=country:ES` +           // restringe resultados a España
+      `&key=${GOOGLE_MAPS_KEY}`
     );
     const data = await res.json();
-    if (data.status === 'OK' && data.results.length > 0) {
-      const { lat, lng } = data.results[0].geometry.location;
-      return { lat, lng };
+    if (data.status !== 'OK' || !data.results.length) {
+      return { lat: null, lng: null };
     }
-    return { lat: null, lng: null };
+
+    const resultado = data.results[0];
+
+    // Verificación extra: el país del resultado debe ser España (ES).
+    // Protege contra casos como "Calle México 25" resolviendo al país México.
+    const paisComponente = resultado.address_components.find(
+      c => c.types.includes('country')
+    );
+    if (!paisComponente || paisComponente.short_name !== 'ES') {
+      console.log(`   ⚠️  Descartado (país devuelto: ${paisComponente?.short_name || '?'}) para: ${address}`);
+      return { lat: null, lng: null };
+    }
+
+    const { lat, lng } = resultado.geometry.location;
+    return { lat, lng };
   } catch {
     return { lat: null, lng: null };
   }
