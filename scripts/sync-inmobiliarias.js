@@ -44,7 +44,6 @@ async function getLastSyncDate() {
     .select('synced_at')
     .order('synced_at', { ascending: false })
     .limit(1);
-
   if (data && data.length > 0) {
     const lastSync = new Date(data[0].synced_at);
     lastSync.setHours(lastSync.getHours() - 1);
@@ -53,16 +52,23 @@ async function getLastSyncDate() {
   return new Date('2020-01-01T00:00:00Z');
 }
 
+// FIX: paginación por page_token además de page= — Zoho corta la paginación por
+// número de página en los primeros 2000 registros (DISCRETE_PAGINATION_LIMIT_EXCEEDED).
+// Si algún día hay >2000 inmobiliarias modificadas desde el último sync (recarga masiva,
+// primera corrida, etc.), con solo "page=" el script se cortaría ahí silenciosamente.
 async function fetchModifiedInmobiliarias(token, since) {
   const results = {};
   let page      = 1;
+  let pageToken = null;
   let hasMore   = true;
   const sinceStr = since.toUTCString();
 
   console.log(`📅 Trayendo inmobiliarias modificadas desde: ${sinceStr}`);
 
   while (hasMore) {
-    const url = `https://www.zohoapis.eu/crm/v7/Accounts?fields=${FIELDS}&per_page=200&page=${page}`;
+    const url = pageToken
+      ? `https://www.zohoapis.eu/crm/v7/Accounts?fields=${FIELDS}&per_page=200&page_token=${pageToken}`
+      : `https://www.zohoapis.eu/crm/v7/Accounts?fields=${FIELDS}&per_page=200&page=${page}`;
     try {
       const res  = await fetch(url, {
         headers: {
@@ -76,9 +82,20 @@ async function fetchModifiedInmobiliarias(token, since) {
       const text = await res.text();
       if (!text || text.trim() === '') break;
       const data = JSON.parse(text);
+
+      if (data.code && data.code !== 'SUCCESS') {
+        console.error(`\n❌ Error página ${page}: ${JSON.stringify(data)}`);
+        break;
+      }
+
       if (!data.data || data.data.length === 0) break;
       data.data.forEach(d => { results[d.id] = d; });
       hasMore = data.info?.more_records ?? false;
+      pageToken = data.info?.next_page_token ?? null;
+      if (hasMore && !pageToken && page >= 10) {
+        console.warn(`\n⚠️  more_records=true pero sin next_page_token en la página ${page}. Deteniendo.`);
+        break;
+      }
       page++;
     } catch (e) {
       console.error(`\n❌ Error página ${page}:`, e.message);
@@ -96,7 +113,6 @@ async function getDealsStats() {
   let all  = [];
   let page = 0;
   const PAGE_SIZE = 1000;
-
   while (true) {
     const { data } = await supabase
       .from('fianzas')
@@ -108,7 +124,6 @@ async function getDealsStats() {
     if (data.length < PAGE_SIZE) break;
     page++;
   }
-
   const stats = {};
   all.forEach(d => {
     const id = d.inmobiliaria_zoho_id;
@@ -120,7 +135,6 @@ async function getDealsStats() {
       stats[id].total_amount += d.amount ?? 0;
     }
   });
-
   return stats;
 }
 
@@ -136,13 +150,10 @@ function buildAddress(d) {
   const city   = d.Billing_City?.trim();
   const state  = d.Billing_State?.trim();
   const code   = normalizarCP(d.Billing_Code);
-
   if (street && street.length > 5)
     return [street, code, city].filter(Boolean).join(', ');
-
   if (city || state)
     return [code, city, state].filter(Boolean).join(', ');
-
   return null;
 }
 
@@ -158,9 +169,7 @@ async function geocode(address) {
     if (data.status !== 'OK' || !data.results.length) {
       return { lat: null, lng: null };
     }
-
     const resultado = data.results[0];
-
     // Verificación extra: el país del resultado debe ser España (ES).
     // Protege contra casos como "Calle México 25" resolviendo al país México.
     const paisComponente = resultado.address_components.find(
@@ -170,7 +179,6 @@ async function geocode(address) {
       console.log(`   ⚠️  Descartado (país devuelto: ${paisComponente?.short_name || '?'}) para: ${address}`);
       return { lat: null, lng: null };
     }
-
     const { lat, lng } = resultado.geometry.location;
     return { lat, lng };
   } catch {
@@ -225,14 +233,12 @@ async function updateStats(stats) {
   let page = 0;
   let total = 0;
   const PAGE_SIZE = 1000;
-
   while (true) {
     const { data } = await supabase
       .from('inmobiliarias')
       .select('zoho_id')
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (!data || data.length === 0) break;
-
     const rows = data.map(i => ({
       zoho_id:       i.zoho_id,
       total_deals:   stats[i.zoho_id]?.total_deals   ?? 0,
@@ -240,7 +246,6 @@ async function updateStats(stats) {
       total_amount:  stats[i.zoho_id]?.total_amount  ?? 0,
       synced_at:     new Date().toISOString(),
     }));
-
     const BATCH = 100;
     for (let i = 0; i < rows.length; i += BATCH) {
       await upsertBatch(rows.slice(i, i + BATCH));
@@ -257,44 +262,35 @@ async function main() {
   const token = await getAccessToken();
   const since = await getLastSyncDate();
   const inmobiliarias = await fetchModifiedInmobiliarias(token, since);
-
   console.log('📊 Calculando stats de deals...');
   const stats = await getDealsStats();
-
   if (inmobiliarias.length === 0) {
     console.log('✅ No hay inmobiliarias modificadas — actualizando solo stats...');
     const total = await updateStats(stats);
     console.log(`✅ Stats actualizadas para ${total} inmobiliarias`);
     return;
   }
-
   const zohoIds = inmobiliarias.map(d => d.id);
   const { data: yaGeocoded } = await supabase
     .from('inmobiliarias')
     .select('zoho_id, lat, billing_street, billing_city, billing_state, billing_code')
     .in('zoho_id', zohoIds)
     .not('lat', 'is', null);
-
   const geocodedMap = {};
   (yaGeocoded ?? []).forEach(r => { geocodedMap[r.zoho_id] = r; });
-
   let geocodedCount = 0;
   const rows        = [];
-
   for (const inmo of inmobiliarias) {
     const row      = mapInmobiliaria(inmo, stats);
     const address  = buildAddress(inmo);
     const existing = geocodedMap[inmo.id];
-
     const dirCambio = existing && address && (
       existing.billing_street?.trim() !== inmo.Billing_Street?.trim() ||
       existing.billing_city?.trim()   !== inmo.Billing_City?.trim() ||
       existing.billing_state?.trim()  !== inmo.Billing_State?.trim() ||
       normalizarCP(existing.billing_code) !== normalizarCP(inmo.Billing_Code)
     );
-
     const necesitaGeocode = address && (!existing?.lat || dirCambio);
-
     if (necesitaGeocode) {
       const { lat, lng } = await geocode(address);
       row.lat = lat; row.lng = lng;
@@ -310,11 +306,9 @@ async function main() {
     }
     rows.push(row);
   }
-
   const BATCH = 100;
   for (let i = 0; i < rows.length; i += BATCH) await upsertBatch(rows.slice(i, i + BATCH));
   console.log(`✅ ${rows.length} inmobiliarias actualizadas, ${geocodedCount} geocodificaciones`);
-
   console.log('📊 Actualizando stats de todas las inmobiliarias...');
   const total = await updateStats(stats);
   console.log(`✅ Stats actualizadas para ${total} inmobiliarias`);

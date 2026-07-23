@@ -32,19 +32,43 @@ function buildAddress(r) {
   return { address: null, calidad: 'sin_direccion' };
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function geocode(address) {
   if (!address || !GOOGLE_MAPS_KEY) return { lat: null, lng: null };
   try {
     const res = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_KEY}`
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}` +
+      `&components=country:ES` +           // restringe resultados a España
+      `&key=${GOOGLE_MAPS_KEY}`
     );
     const data = await res.json();
-    if (data.status === 'OK' && data.results.length > 0) {
-      const { lat, lng } = data.results[0].geometry.location;
-      return { lat, lng };
+    if (data.status !== 'OK' || !data.results.length) {
+      // FIX: antes se descartaba el status real sin mostrarlo. Si ves muchos
+      // OVER_QUERY_LIMIT es rate limiting; REQUEST_DENIED es problema de la key;
+      // ZERO_RESULTS simplemente no encontró la dirección.
+      if (data.status !== 'ZERO_RESULTS') {
+        console.log(`   ⚠️  Geocode status=${data.status}${data.error_message ? ' (' + data.error_message + ')' : ''} para: ${address}`);
+      }
+      return { lat: null, lng: null };
     }
-    return { lat: null, lng: null };
-  } catch {
+
+    const resultado = data.results[0];
+
+    // Verificación extra: el país del resultado debe ser España (ES).
+    // Protege contra casos como "Calle México 25" resolviendo al país México.
+    const paisComponente = resultado.address_components.find(
+      c => c.types.includes('country')
+    );
+    if (!paisComponente || paisComponente.short_name !== 'ES') {
+      console.log(`   ⚠️  Descartado (país devuelto: ${paisComponente?.short_name || '?'}) para: ${address}`);
+      return { lat: null, lng: null };
+    }
+
+    const { lat, lng } = resultado.geometry.location;
+    return { lat, lng };
+  } catch (e) {
+    console.log(`   ⚠️  Excepción geocodificando "${address}": ${e.message}`);
     return { lat: null, lng: null };
   }
 }
@@ -100,6 +124,8 @@ async function main() {
       } else {
         totalFailed++;
       }
+
+      await sleep(50); // evita ráfagas que disparen OVER_QUERY_LIMIT en Google Maps
     }
 
     offset += rows.length;

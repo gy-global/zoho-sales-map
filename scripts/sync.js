@@ -58,16 +58,23 @@ async function getLastSyncDate() {
   return new Date('2020-01-01T00:00:00Z');
 }
 
+// FIX: paginación por page_token además de page= — Zoho corta la paginación por
+// número de página en los primeros 2000 registros (DISCRETE_PAGINATION_LIMIT_EXCEEDED).
+// Con ~30.000 fianzas totales, una recarga masiva o la primera corrida podría
+// fácilmente superar los 2000 deals modificados y cortarse ahí sin este fix.
 async function fetchModifiedDeals(token, since) {
   const results = {};
   let page      = 1;
+  let pageToken = null;
   let hasMore   = true;
   const sinceStr = since.toUTCString();
 
   console.log(`📅 Trayendo deals modificados desde: ${sinceStr}`);
 
   while (hasMore) {
-    const url = `https://www.zohoapis.eu/crm/v7/Deals?fields=${FIELDS}&per_page=200&page=${page}`;
+    const url = pageToken
+      ? `https://www.zohoapis.eu/crm/v7/Deals?fields=${FIELDS}&per_page=200&page_token=${pageToken}`
+      : `https://www.zohoapis.eu/crm/v7/Deals?fields=${FIELDS}&per_page=200&page=${page}`;
     try {
       const res  = await fetch(url, {
         headers: {
@@ -81,9 +88,20 @@ async function fetchModifiedDeals(token, since) {
       const text = await res.text();
       if (!text || text.trim() === '') break;
       const data = JSON.parse(text);
+
+      if (data.code && data.code !== 'SUCCESS') {
+        console.error(`\n❌ Error página ${page}: ${JSON.stringify(data)}`);
+        break;
+      }
+
       if (!data.data || data.data.length === 0) break;
       data.data.forEach(d => { results[d.id] = d; });
       hasMore = data.info?.more_records ?? false;
+      pageToken = data.info?.next_page_token ?? null;
+      if (hasMore && !pageToken && page >= 10) {
+        console.warn(`\n⚠️  more_records=true pero sin next_page_token en la página ${page}. Deteniendo.`);
+        break;
+      }
       page++;
     } catch (e) {
       console.error(`\n❌ Error página ${page}:`, e.message);
@@ -126,15 +144,30 @@ function buildAddress(d) {
 async function geocode(address) {
   if (!address || !GOOGLE_MAPS_KEY) return { lat: null, lng: null };
   try {
-    const res  = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_KEY}`
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}` +
+      `&components=country:ES` +           // restringe resultados a España
+      `&key=${GOOGLE_MAPS_KEY}`
     );
     const data = await res.json();
-    if (data.status === 'OK' && data.results.length > 0) {
-      const { lat, lng } = data.results[0].geometry.location;
-      return { lat, lng };
+    if (data.status !== 'OK' || !data.results.length) {
+      return { lat: null, lng: null };
     }
-    return { lat: null, lng: null };
+
+    const resultado = data.results[0];
+
+    // Verificación extra: el país del resultado debe ser España (ES).
+    // Protege contra casos como "Calle México 25" resolviendo al país México.
+    const paisComponente = resultado.address_components.find(
+      c => c.types.includes('country')
+    );
+    if (!paisComponente || paisComponente.short_name !== 'ES') {
+      console.log(`   ⚠️  Descartado (país devuelto: ${paisComponente?.short_name || '?'}) para: ${address}`);
+      return { lat: null, lng: null };
+    }
+
+    const { lat, lng } = resultado.geometry.location;
+    return { lat, lng };
   } catch {
     return { lat: null, lng: null };
   }

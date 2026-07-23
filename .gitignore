@@ -8,3 +8,8 @@ scripts/audit-notificaciones.js
 scripts/compare.js
 scripts/coql-stats-impagos.js
 scripts/scan-notificaciones-faltantes.js
+scripts/regeocode-inmobiliarias.js
+scripts/backfill-direcciones.js
+scripts/debug-lookup-fields.js
+scripts/reconcile-impagos.js
+scripts/reconcile-related.js

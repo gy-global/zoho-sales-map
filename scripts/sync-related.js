@@ -43,14 +43,21 @@ async function getLastSyncDate() {
   return new Date('2020-01-01T00:00:00Z');
 }
 
+// FIX 1: ya no se traga los errores en silencio (antes "catch { break; }" sin loguear
+// nada — así fue como id_ticket_fianzas mal escrito pasó desapercibido tanto tiempo).
+// FIX 2: paginación por page_token además de page= — evita cortarse en los 2000
+// registros si algún módulo tiene muchos cambios de golpe.
 async function fetchModified(token, module, fields, since) {
   const results = [];
   let page      = 1;
+  let pageToken = null;
   let hasMore   = true;
   const sinceStr = since.toUTCString();
 
   while (hasMore) {
-    const url = `https://www.zohoapis.eu/crm/v7/${module}?fields=${fields}&per_page=200&page=${page}`;
+    const url = pageToken
+      ? `https://www.zohoapis.eu/crm/v7/${module}?fields=${fields}&per_page=200&page_token=${pageToken}`
+      : `https://www.zohoapis.eu/crm/v7/${module}?fields=${fields}&per_page=200&page=${page}`;
     try {
       const res  = await fetch(url, {
         headers: {
@@ -64,11 +71,25 @@ async function fetchModified(token, module, fields, since) {
       const text = await res.text();
       if (!text || text.trim() === '') break;
       const data = JSON.parse(text);
+
+      if (data.code && data.code !== 'SUCCESS') {
+        console.error(`❌ ${module} página ${page}: error Zoho -> ${JSON.stringify(data)}`);
+        break;
+      }
+
       if (!data.data || data.data.length === 0) break;
       results.push(...data.data);
       hasMore = data.info?.more_records ?? false;
+      pageToken = data.info?.next_page_token ?? null;
+      if (hasMore && !pageToken && page >= 10) {
+        console.warn(`⚠️  ${module}: more_records=true pero sin next_page_token en la página ${page}. Deteniendo.`);
+        break;
+      }
       page++;
-    } catch { break; }
+    } catch (e) {
+      console.error(`❌ ${module} página ${page}: excepción -> ${e.message}`);
+      break;
+    }
     await new Promise(r => setTimeout(r, 200));
   }
 
@@ -93,12 +114,17 @@ async function main() {
   console.log(`📅 Sincronizando cambios desde: ${since.toUTCString()}`);
 
   // Renovaciones
+  // FIX: el campo lookup real hacia la fianza es "Fianza" (confirmado con
+  // debug-lookup-fields.js), no "id_ticket_fianzas" (ese campo existe pero es
+  // texto suelto, no el lookup — por eso siempre venía null).
   const rens = await fetchModified(token, 'Renovaciones',
-    'id,Name,Stage,Renovacion_N,Closing_Date,Amount,Estado_del_Contrato,id_ticket_fianzas,Modified_Time', since);
+    'id,Name,Stage,Renovacion_N,Closing_Date,Amount,Estado_del_Contrato,Fianza,Modified_Time', since);
   console.log(`🔄 ${rens.length} renovaciones modificadas`);
+  const rensSinFianza = rens.filter(r => !r.Fianza?.id).length;
+  if (rensSinFianza > 0) console.log(`ℹ️  ${rensSinFianza} renovaciones sin Fianza vinculada en Zoho (quedan con fianza_zoho_id = null)`);
   await upsert('renovaciones', rens.map(r => ({
     zoho_id:         r.id,
-    fianza_zoho_id:  r.id_ticket_fianzas?.id ?? null,
+    fianza_zoho_id:  r.Fianza?.id ?? null,
     name:            r.Name,
     stage:           r.Stage,
     renovacion_n:    r.Renovacion_N,
@@ -110,11 +136,11 @@ async function main() {
 
   // Recuperos
   const recs = await fetchModified(token, 'Impagos_Recuperos',
-    'id,Name,Fase,Total_Reclamos,Saldo_Pendiente,Total_Pagado,id_ticket_fianzas,Modified_Time', since);
+    'id,Name,Fase,Total_Reclamos,Saldo_Pendiente,Total_Pagado,Fianza,Modified_Time', since);
   console.log(`⚠️  ${recs.length} recuperos modificados`);
   await upsert('impagos_recupero', recs.map(r => ({
     zoho_id:         r.id,
-    fianza_zoho_id:  r.id_ticket_fianzas?.id ?? null,
+    fianza_zoho_id:  r.Fianza?.id ?? null,
     name:            r.Name,
     fase:            r.Fase,
     total_reclamos:  r.Total_Reclamos,
@@ -125,11 +151,11 @@ async function main() {
 
   // Notificaciones
   const nots = await fetchModified(token, 'Impagos_Notificaciones',
-    'id,Name,Fase,Periodo_Mes,Periodo_A_o,Importe,id_ticket_fianzas,Modified_Time', since);
+    'id,Name,Fase,Periodo_Mes,Periodo_A_o,Importe,Fianza,Modified_Time', since);
   console.log(`📋 ${nots.length} notificaciones modificadas`);
   await upsert('impagos_notificaciones', nots.map(n => ({
     zoho_id:        n.id,
-    fianza_zoho_id: n.id_ticket_fianzas?.id ?? null,
+    fianza_zoho_id: n.Fianza?.id ?? null,
     name:           n.Name,
     fase:           n.Fase,
     periodo_mes:    n.Periodo_Mes,
@@ -139,12 +165,16 @@ async function main() {
   })), 'zoho_id');
 
   // Legales
+  // OJO: "Fianza" aquí es el mismo patrón confirmado en los otros 3 módulos,
+  // pero NO se verificó específicamente para Impagos_Legales con el diagnóstico.
+  // Si fianza_zoho_id queda siempre null en impagos_legales, correr
+  // debug-lookup-fields.js contra "Impagos_Legales" para confirmar el nombre real.
   const legs = await fetchModified(token, 'Impagos_Legales',
-    'id,Name,Fase_Legal,Caso_Activo,Saldo_Pendiente,Saldo_Recuperado,Fianzas,Modified_Time', since);
+    'id,Name,Fase_Legal,Caso_Activo,Saldo_Pendiente,Saldo_Recuperado,Fianza,Modified_Time', since);
   console.log(`⚖️  ${legs.length} legales modificados`);
   await upsert('impagos_legales', legs.map(l => ({
     zoho_id:          l.id,
-    fianza_zoho_id:   l.Fianzas?.id ?? null,
+    fianza_zoho_id:   l.Fianza?.id ?? null,
     name:             l.Name,
     fase_legal:       l.Fase_Legal,
     caso_activo:      l.Caso_Activo ?? false,
