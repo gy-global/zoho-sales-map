@@ -13,3 +13,5 @@ scripts/backfill-direcciones.js
 scripts/debug-lookup-fields.js
 scripts/reconcile-impagos.js
 scripts/reconcile-related.js
+scripts/recalcular-stats-inmobiliarias.js
+scripts/geocode-pending-inmobiliarias.js

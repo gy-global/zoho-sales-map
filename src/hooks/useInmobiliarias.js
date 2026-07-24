@@ -87,6 +87,7 @@ export function useInmobiliarias(filtros = {}) {
 
           if (filtros.comercial) query = query.eq('comercial_garantiaya', filtros.comercial);
           if (filtros.conPolizas) query = query.gt('total_polizas', 0);
+          if (filtros.sinVentas)  query = query.eq('total_polizas', 0);
           if (filtros.conDeals)   query = query.gt('total_deals', 0);
           if (filtros.marca)      query = query.eq('marca', true);
           if (filtros.acuerdo)    query = query.eq('acuerdo_colaboracion', true);

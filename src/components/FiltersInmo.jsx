@@ -14,7 +14,7 @@ function SearchSelect({ label, value, onChange, options, placeholder }) {
       </label>
       <div
         onClick={() => setOpen(!open)}
-        style={{ width:'100%', padding:'7px 8px', borderRadius:'6px', border:`1px solid ${open ? '#1c3fae' : '#ddd'}`, fontSize:'13px', background:'white', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center' }}
+        style={{ width:'100%', padding:'7px 8px', borderRadius:'6px', border:`1px solid ${open ? '#6366f1' : '#ddd'}`, fontSize:'13px', background:'white', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center' }}
       >
         <span style={{ color: selected ? '#222' : '#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'200px' }}>
           {selected || placeholder}
@@ -97,11 +97,11 @@ export default function FiltersInmo({ filtros, onChange, onClose }) {
   const style = {
     wrap:     { width:'280px', background:'white', padding:'16px', height:'100%', overflowY:'auto' },
     badge:    { display:'inline-block', marginLeft:'6px', background:'#e0e7ff', color:'#3730a3', borderRadius:'10px', padding:'1px 6px', fontSize:'10px', fontWeight:600 },
-    btn:      { width:'100%', marginTop:'20px', padding:'9px', background:'#15235f', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'13px', fontWeight:600 },
+    btn:      { width:'100%', marginTop:'20px', padding:'9px', background:'#1a1a2e', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'13px', fontWeight:600 },
     label:    { display:'block', fontSize:'11px', fontWeight:600, color:'#888', marginBottom:'4px', marginTop:'14px', textTransform:'uppercase', letterSpacing:'0.4px' },
     sel:      { width:'100%', padding:'7px 8px', borderRadius:'6px', border:'1px solid #ddd', fontSize:'13px', background:'white', cursor:'pointer' },
     section:  { marginTop:'16px', paddingTop:'14px', borderTop:'1px solid #f0f0f0' },
-    title:    { fontSize:'11px', fontWeight:700, color:'#15235f', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'8px' },
+    title:    { fontSize:'11px', fontWeight:700, color:'#1a1a2e', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'8px' },
     checkRow: { display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px', cursor:'pointer' },
   };
 
@@ -109,7 +109,7 @@ export default function FiltersInmo({ filtros, onChange, onClose }) {
     <div style={style.wrap}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'4px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-          <p style={{ fontWeight:700, fontSize:'14px', color:'#15235f', margin:0 }}>Filtros</p>
+          <p style={{ fontWeight:700, fontSize:'14px', color:'#1a1a2e', margin:0 }}>Filtros</p>
           {activeCount > 0 && <span style={style.badge}>{activeCount}</span>}
         </div>
         <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontSize:'18px', color:'#999' }}>✕</button>
@@ -160,6 +160,10 @@ export default function FiltersInmo({ filtros, onChange, onClose }) {
         <label style={style.checkRow}>
           <input type="checkbox" checked={!!filtros.conPolizas} onChange={e => set('conPolizas', e.target.checked ? 'true' : '')} />
           <span style={{ fontSize:'12px', color:'#333' }}>✅ Con pólizas vendidas</span>
+        </label>
+        <label style={style.checkRow}>
+          <input type="checkbox" checked={!!filtros.sinVentas} onChange={e => set('sinVentas', e.target.checked ? 'true' : '')} />
+          <span style={{ fontSize:'12px', color:'#333' }}>🚫 Sin ventas</span>
         </label>
         <label style={style.checkRow}>
           <input type="checkbox" checked={!!filtros.conDeals} onChange={e => set('conDeals', e.target.checked ? 'true' : '')} />

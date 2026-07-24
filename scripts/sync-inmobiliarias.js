@@ -110,29 +110,61 @@ async function fetchModifiedInmobiliarias(token, since) {
 }
 
 async function getDealsStats() {
-  let all  = [];
+  // Fianzas de todas las inmobiliarias
+  let allFianzas = [];
   let page = 0;
   const PAGE_SIZE = 1000;
   while (true) {
     const { data } = await supabase
       .from('fianzas')
-      .select('inmobiliaria_zoho_id, amount, stage')
+      .select('zoho_id, inmobiliaria_zoho_id, amount, stage')
       .not('inmobiliaria_zoho_id', 'is', null)
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (!data || data.length === 0) break;
-    all = all.concat(data);
+    allFianzas = allFianzas.concat(data);
     if (data.length < PAGE_SIZE) break;
     page++;
   }
+
+  // Renovaciones en estado "Renovado" -> suman aparte al recaudado de su fianza
+  let allRenovaciones = [];
+  page = 0;
+  while (true) {
+    const { data } = await supabase
+      .from('renovaciones')
+      .select('fianza_zoho_id, amount')
+      .eq('stage', 'Renovado')
+      .not('fianza_zoho_id', 'is', null)
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (!data || data.length === 0) break;
+    allRenovaciones = allRenovaciones.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    page++;
+  }
+
+  // fianza_zoho_id -> suma de renovaciones activas (puede haber más de una renovación por fianza)
+  const renovAmountPorFianza = {};
+  allRenovaciones.forEach(r => {
+    renovAmountPorFianza[r.fianza_zoho_id] = (renovAmountPorFianza[r.fianza_zoho_id] ?? 0) + (r.amount ?? 0);
+  });
+
   const stats = {};
-  all.forEach(d => {
+  allFianzas.forEach(d => {
     const id = d.inmobiliaria_zoho_id;
     if (!id) return;
     if (!stats[id]) stats[id] = { total_deals: 0, total_polizas: 0, total_amount: 0 };
     stats[id].total_deals++;
-    if (d.stage === 'Póliza Vendida') {
+
+    const esVendida    = d.stage === 'Póliza Vendida';
+    const montoRenovado = renovAmountPorFianza[d.zoho_id]; // undefined si no tiene renovación "Renovado"
+    const tieneRenovacionActiva = montoRenovado !== undefined;
+
+    // Cuenta como póliza si está vendida O tiene una renovación en estado "Renovado"
+    // (aunque el stage de la fianza ya no sea literalmente "Póliza Vendida").
+    if (esVendida || tieneRenovacionActiva) {
       stats[id].total_polizas++;
-      stats[id].total_amount += d.amount ?? 0;
+      // Recaudado = monto de la fianza + monto de la renovación, cuando aplica.
+      stats[id].total_amount += (d.amount ?? 0) + (montoRenovado ?? 0);
     }
   });
   return stats;
@@ -273,9 +305,10 @@ async function main() {
   const zohoIds = inmobiliarias.map(d => d.id);
   const { data: yaGeocoded } = await supabase
     .from('inmobiliarias')
-    .select('zoho_id, lat, billing_street, billing_city, billing_state, billing_code')
+    .select('zoho_id, lat, lng, billing_street, billing_city, billing_state, billing_code')
     .in('zoho_id', zohoIds)
-    .not('lat', 'is', null);
+    .not('lat', 'is', null)
+    .not('lng', 'is', null);
   const geocodedMap = {};
   (yaGeocoded ?? []).forEach(r => { geocodedMap[r.zoho_id] = r; });
   let geocodedCount = 0;
@@ -297,8 +330,9 @@ async function main() {
       row.geocodificado           = lat !== null;
       row.calidad_geocodificacion = lat !== null ? 'completa' : 'sin_coordenadas';
       if (lat) geocodedCount++;
-    } else if (existing?.lat) {
+    } else if (existing?.lat && existing?.lng) {
       row.lat = existing.lat;
+      row.lng = existing.lng;
       row.geocodificado           = true;
       row.calidad_geocodificacion = 'completa';
     } else {
