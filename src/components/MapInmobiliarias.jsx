@@ -123,7 +123,7 @@ export default function MapInmobiliarias({ inmobiliarias, stats, filtersOpen }) 
       zoom: 6,
       zoomControl: false,
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_KEY}`, {
       attribution: '© OpenStreetMap © CartoDB',
       maxZoom: 19,
     }).addTo(mapObj.current);
